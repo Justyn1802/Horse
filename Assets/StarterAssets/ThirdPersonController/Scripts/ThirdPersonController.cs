@@ -1,4 +1,6 @@
-﻿using UnityEngine;
+﻿using DG.Tweening;
+using TMPro;
+using UnityEngine;
 using UnityEngine.UI;
 #if ENABLE_INPUT_SYSTEM && STARTER_ASSETS_PACKAGES_CHECKED
 using UnityEngine.InputSystem;
@@ -27,6 +29,9 @@ namespace StarterAssets
         [SerializeField] private float tryCatchSpeed = 1f;
         [SerializeField] private float playerStrong = 0.2f;
         [SerializeField] private float horseStrong = 2;
+        [SerializeField] private Rope rope;
+        [SerializeField] private Horse target;
+        [SerializeField] private TMP_Text txtLog;
         
         [Header("Player")]
         [Tooltip("Move speed of the character in m/s")]
@@ -211,10 +216,27 @@ namespace StarterAssets
                     {
                         _animator.SetInteger(_animIDState, (int)state);
                     }
+
+                    DOTween.Sequence()
+                        .AppendInterval(1f)
+                        .AppendCallback(() =>
+                        {
+                            rope.gameObject.SetActive(true);
+                            rope.end.SetParent(null);
+                            rope.end.position = rope.start.position;
+                            rope.slack = 0;
+                        })
+                        .Append(rope.end.DOMove(target.catchTarget.position, 0.5f))
+                        .AppendCallback(() =>
+                        {
+                            rope.end.SetParent(target.transform);
+                            sliderCatch.gameObject.SetActive(true);
+                            sliderCatch.value = 0.5f;
+                        });
                 }
             }
 
-            if (state == State.Catch)
+            if (state == State.Catch && sliderCatch.gameObject.activeSelf)
             {
                 sliderCatch.value -= horseStrong*Time.deltaTime;
                 if (Input.GetMouseButtonDown(0))
@@ -224,23 +246,38 @@ namespace StarterAssets
                     if (_hasAnimator)
                     {
                         _animator.SetTrigger("Catch");
+                        target.rb.AddForceAtPosition((transform.position-target.transform.position).normalized*100,target.catchTarget.position);
+                        DOTween.Sequence()
+                            .Append(DOTween.To(() => rope.slack, value => rope.slack = value, 0, 0.2f))
+                            .Append(DOTween.To(() => rope.slack, value => rope.slack = value, 0.2f, 0.2f));
                     }
                 }
 
                 if (sliderCatch.value is <= 0 or >= 1)
                 {
+                    txtLog.gameObject.SetActive(true);
                     switch (sliderCatch.value)
                     {
                         case <= 0:
+                            txtLog.text = "<color=red>Fail";
                             Debug.Log("Catch Fail");
                             break;
                         case >= 1:
+                            txtLog.text = "<color=green>Success";
                             Debug.Log("Catch Done");
                             break;
                     }
+                    DOTween.Sequence().AppendInterval(2).AppendCallback(() => { txtLog.gameObject.SetActive(false);});
                     sliderCatch.gameObject.SetActive(false);
                     state = State.Move;
                     LockCameraPosition = false;
+                    
+                    rope.end.SetParent(rope.start);
+                    rope.slack = 0;
+                    rope.end.DOLocalMove(Vector3.zero, 0.2f).OnComplete(() =>
+                    {
+                        rope.gameObject.SetActive(false);
+                    });
                     if (_hasAnimator)
                     {
                         _animator.SetInteger(_animIDState, (int)state);
